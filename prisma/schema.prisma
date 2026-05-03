@@ -1,0 +1,449 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== User & Auth ====================
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  stocks         Stock[]
+  stockGroups    StockGroup[]
+  events         Event[]
+  researchNotes  ResearchNote[]
+  tradePlans     TradePlan[]
+  tradeLogs      TradeLog[]
+  weeklyReviews  WeeklyReview[]
+  dailyReviews   DailyReview[]
+  screenResults  ScreenResult[]
+  deepResearches DeepResearch[]
+  morningBriefs  MorningBrief[]
+  riskSettings   RiskSettings?
+  alertRules     AlertRule[]
+  alerts         Alert[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== Stock Watchlist ====================
+model Stock {
+  id      String @id @default(cuid())
+  code    String
+  name    String
+  market  String @default("SH")
+  tags    String?
+  notes   String?
+  userId  String
+  groupId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group                StockGroup?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  events               Event[]
+  researchNotes        ResearchNote[]
+  tradePlans           TradePlan[]
+  validationIndicators ValidationIndicator[]
+  deepResearches       DeepResearch[]
+
+  @@unique([userId, code])
+  @@index([userId, groupId])
+}
+
+model StockGroup {
+  id        String  @id @default(cuid())
+  name      String
+  color     String?
+  sortOrder Int     @default(0)
+  userId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stocks Stock[]
+
+  @@unique([userId, name])
+}
+
+// ==================== Events ====================
+model Event {
+  id              String   @id @default(cuid())
+  title           String
+  summary         String
+  type            String
+  impactDirection String   @default("neutral")
+  impactDuration  String?
+  sourceUrl       String?
+  sourceTitle     String?
+  rawContent      String?
+  aiGenerated     Boolean  @default(false)
+  aiPrompt        String?
+  eventDate       DateTime
+  stockId         String
+  userId          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stock         Stock          @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchNotes ResearchNote[]
+
+  @@index([stockId, eventDate])
+  @@index([userId, createdAt])
+}
+
+// ==================== Research Notes ====================
+model ResearchNote {
+  id      String  @id @default(cuid())
+  content String
+  stockId String
+  eventId String?
+  userId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stock Stock  @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  event Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stockId])
+}
+
+// ==================== Validation Indicators ====================
+model ValidationIndicator {
+  id                String  @id @default(cuid())
+  indicator         String
+  targetValue       String?
+  currentValue      String?
+  disproofCondition String?
+  status            String  @default("pending")
+  stockId           String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId])
+}
+
+// ==================== Trade Plan ====================
+model TradePlan {
+  id                 String  @id @default(cuid())
+  entryConditions    String
+  entryPriceMin      Float?
+  entryPriceMax      Float?
+  stopLoss           Float
+  takeProfit         Float?
+  maxPosition        Float
+  disproofConditions String?
+  status             String  @default("active")
+  stockId            String
+  userId             String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stock     Stock      @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeLogs TradeLog[]
+
+  @@index([stockId])
+  @@index([userId, status])
+}
+
+// ==================== Trade Log ====================
+model TradeLog {
+  id          String   @id @default(cuid())
+  type        String
+  quantity    Int
+  price       Float
+  amount      Float
+  realizedPnL Float?
+  entryReason String?
+  exitReason  String?
+  resultTag   String?
+  notes       String?
+  tradeTime   DateTime @default(now())
+  tradePlanId String
+  userId      String
+
+  createdAt DateTime @default(now())
+
+  tradePlan TradePlan @relation(fields: [tradePlanId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tradePlanId])
+  @@index([userId, tradeTime])
+}
+
+// ==================== Weekly Review ====================
+model WeeklyReview {
+  id            String   @id @default(cuid())
+  weekStart     DateTime
+  weekEnd       DateTime
+  totalTrades   Int      @default(0)
+  winRate       Float?
+  totalPnL      Float?
+  maxDrawdown   Float?
+  summary       String?
+  statsByReason String?
+  improvements  String?
+  userNotes     String?
+  userId        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([userId, weekStart])
+}
+
+// ==================== Daily Review ====================
+model DailyReview {
+  id            String   @id @default(cuid())
+  date          DateTime
+  indexSummary  String
+  sectorSummary String
+  marketStats   String
+  northbound    String?
+  aiSummary     String?
+  aiHotTopics   String?
+  userId        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ==================== Screen Result ====================
+model ScreenResult {
+  id           String   @id @default(cuid())
+  strategyName String
+  stockCode    String
+  stockName    String
+  matchDate    DateTime
+  score        Float?
+  reason       String?
+  indicators   String
+  userId       String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, matchDate])
+  @@index([strategyName, matchDate])
+}
+
+// ==================== Deep Research ====================
+model DeepResearch {
+  id           String  @id @default(cuid())
+  stockCode    String
+  stockName    String
+  fundamentals String?
+  technicals   String?
+  catalysts    String?
+  risks        String?
+  valuation    String?
+  conclusion   String?
+  rating       String?
+  targetPrice  Float?
+  userId       String
+  stockId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock? @relation(fields: [stockId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([stockCode])
+}
+
+// ==================== Morning Brief ====================
+model MorningBrief {
+  id              String   @id @default(cuid())
+  date            DateTime
+  limitUpAnalysis String?  // 昨日涨��分析 JSON
+  premiumData     String?  // 昨日涨停今日表现 JSON
+  focusSectors    String?  // 重点关注板块 JSON
+  focusStocks     String?  // 关注个股池 JSON
+  aiStrategy      String?  // AI 当日策略建议
+  userId          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ==================== Risk Settings ====================
+model RiskSettings {
+  id                  String @id @default(cuid())
+  maxDailyLoss        Float  @default(2.0)   // 单日最大亏损百分比
+  maxConsecutiveLoss  Int    @default(3)      // 连续亏损次数预警
+  maxSinglePosition   Float  @default(20.0)  // 单票最大仓位百分比
+  maxTotalPosition    Float  @default(80.0)  // 最大总仓位百分比
+  totalCapital        Float  @default(100000) // 总资金
+  userId              String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== Alert Rules ====================
+model AlertRule {
+  id          String  @id @default(cuid())
+  name        String
+  type        String  // price_surge | price_drop | volume_surge | near_limit_up | rapid_rise | rapid_drop | sector_move
+  threshold   Float   // 触发阈值（百分比或倍数）
+  scope       String  @default("watchlist") // watchlist | market | custom
+  stockCodes  String? // scope=custom 时的自选股代码列表 JSON
+  enabled     Boolean @default(true)
+  userId      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alerts Alert[]
+
+  @@index([userId, enabled])
+}
+
+// ==================== Rotation: Board Snapshot ====================
+model BoardSnapshot {
+  id            String   @id @default(cuid())
+  tradeDate     String   // YYYY-MM-DD
+  timeSlot      String   // PRE_OPEN | 0930 | 1030 | 1100 | 1330 | 1430 | CLOSE
+  boardType     String   // INDUSTRY | CONCEPT
+  boardId       String   // 东财板块代码 (BKxxxx)
+  boardName     String
+
+  // 6 维原始指标
+  changePct     Float    // 板块涨幅 %
+  limitUpCount  Int      // 板块内涨停数
+  mainNetInflow Float    // 主力净流入 (元)
+  topStreak     Int      // 板块内最高连板数
+  turnoverRate  Float    // 平均换手率 %
+  newsHeat      Int      // 关联新闻条数
+
+  // 评分结果
+  strengthScore Float    // 0-100 综合强度分
+  deltaScore    Float?   // ΔS 与上一快照差
+  accelScore    Float?   // Δ²S 加速度
+  stage         String?  // STARTING | RISING | DIVERGING | FADING
+  stageReason   String?  // 触发原因（含硬规则命中说明）
+
+  leaderStocks  String   // JSON: 龙头股代码列表
+
+  createdAt     DateTime @default(now())
+
+  @@unique([tradeDate, timeSlot, boardType, boardId])
+  @@index([tradeDate, boardType, strengthScore])
+  @@index([boardType, boardId, tradeDate, timeSlot])
+}
+
+// ==================== Rotation: Event Stream ====================
+model RotationEvent {
+  id         String   @id @default(cuid())
+  tradeDate  String
+  timestamp  DateTime
+  eventType  String   // RISING_BREAKOUT | LEADER_BROKEN | STAGE_CHANGE | STARTING_SIGNAL | FADING_SIGNAL
+  boardType  String
+  boardId    String
+  boardName  String
+  fromStage  String?
+  toStage    String?
+  payload    String   // JSON 详情
+  createdAt  DateTime @default(now())
+
+  @@index([tradeDate, timestamp])
+  @@index([boardType, boardId, tradeDate])
+}
+
+// ==================== Alerts ====================
+model Alert {
+  id          String   @id @default(cuid())
+  type        String   // 同 AlertRule.type
+  stockCode   String
+  stockName   String
+  message     String
+  detail      String?  // 详细数据 JSON
+  currentValue Float   // 当前触发值
+  threshold   Float    // 触发时的阈值
+  read        Boolean  @default(false)
+  ruleId      String?
+  userId      String
+
+  createdAt DateTime @default(now())
+
+  rule AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt])
+  @@index([userId, createdAt])
+  @@index([stockCode, createdAt])
+}
