@@ -1,17 +1,14 @@
 name: Rotation Snapshot Cron
 
-# 用 GitHub Actions 替代 Vercel Hobby 不支持的高频 cron
-# 7 个 schedule 对应 A 股交易日 7 个关键时刻（UTC，对应 BJT +8h）
+# 注意：定时触发已迁移到 cron-job.org（精度更高、不受 GH Actions 高峰期延迟影响）
+# 详见 docs/plans/2026-05-04-cron-job-org-setup.md
+#
+# 此 workflow 仅保留 workflow_dispatch（手动触发），用于：
+#   - 调试 endpoint 连通性
+#   - 补录某个 timeSlot
+#   - 验证 GitHub Secrets 配置正确
 
 on:
-  schedule:
-    - cron: '15 1 * * 1-5'   # 09:15 BJT - PRE_OPEN（盘前 10min）
-    - cron: '35 1 * * 1-5'   # 09:35 BJT - 0930（开盘 5min 后）
-    - cron: '30 2 * * 1-5'   # 10:30 BJT - 1030（上半场中段）
-    - cron: '25 3 * * 1-5'   # 11:25 BJT - 1100（午休前 5min）
-    - cron: '30 5 * * 1-5'   # 13:30 BJT - 1330（午盘开盘 30min 后）
-    - cron: '30 6 * * 1-5'   # 14:30 BJT - 1430（尾盘前 30min）
-    - cron: '5 7 * * 1-5'    # 15:05 BJT - CLOSE（收盘 5min 后）
   workflow_dispatch:
     inputs:
       timeSlot:
