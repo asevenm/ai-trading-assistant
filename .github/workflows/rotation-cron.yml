@@ -1,0 +1,76 @@
+name: Rotation Snapshot Cron
+
+# 用 GitHub Actions 替代 Vercel Hobby 不支持的高频 cron
+# 7 个 schedule 对应 A 股交易日 7 个关键时刻（UTC，对应 BJT +8h）
+
+on:
+  schedule:
+    - cron: '15 1 * * 1-5'   # 09:15 BJT - PRE_OPEN（盘前 10min）
+    - cron: '35 1 * * 1-5'   # 09:35 BJT - 0930（开盘 5min 后）
+    - cron: '30 2 * * 1-5'   # 10:30 BJT - 1030（上半场中段）
+    - cron: '25 3 * * 1-5'   # 11:25 BJT - 1100（午休前 5min）
+    - cron: '30 5 * * 1-5'   # 13:30 BJT - 1330（午盘开盘 30min 后）
+    - cron: '30 6 * * 1-5'   # 14:30 BJT - 1430（尾盘前 30min）
+    - cron: '5 7 * * 1-5'    # 15:05 BJT - CLOSE（收盘 5min 后）
+  workflow_dispatch:
+    inputs:
+      timeSlot:
+        description: '强制指定 timeSlot（可选，留空则按当前北京时间自动判断）'
+        type: choice
+        options:
+          - ''
+          - PRE_OPEN
+          - '0930'
+          - '1030'
+          - '1100'
+          - '1330'
+          - '1430'
+          - CLOSE
+        default: ''
+      force:
+        description: '绕过非交易日检查'
+        type: boolean
+        default: false
+
+jobs:
+  trigger:
+    name: Trigger /api/rotation/cron
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Build query string
+        id: query
+        run: |
+          slot='${{ github.event.inputs.timeSlot }}'
+          force='${{ github.event.inputs.force }}'
+          q=''
+          [ -n "$slot" ] && q="${q}&timeSlot=${slot}"
+          [ "$force" = 'true' ] && q="${q}&force=1"
+          echo "qs=${q}" >> "$GITHUB_OUTPUT"
+
+      - name: POST to rotation cron endpoint
+        env:
+          DEPLOYMENT_URL: ${{ secrets.VERCEL_DEPLOYMENT_URL }}
+          TOKEN: ${{ secrets.ROTATION_CRON_TOKEN }}
+          QS: ${{ steps.query.outputs.qs }}
+        run: |
+          if [ -z "$DEPLOYMENT_URL" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Missing secrets VERCEL_DEPLOYMENT_URL or ROTATION_CRON_TOKEN"
+            exit 1
+          fi
+
+          URL="${DEPLOYMENT_URL%/}/api/rotation/cron${QS:+?${QS#&}}"
+          echo "▶ POST ${URL}"
+
+          RESPONSE=$(curl -fsS \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5 \
+            -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -w "\n---HTTP %{http_code} (%{time_total}s)---" \
+            "${URL}")
+
+          echo "$RESPONSE"

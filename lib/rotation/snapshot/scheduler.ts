@@ -107,7 +107,7 @@ const SCHEDULED_SLOTS: { slot: TimeSlot; hour: number; minute: number }[] = [
   { slot: "CLOSE", hour: 15, minute: 5 },
 ]
 
-const SCHEDULE_TOLERANCE_MIN = 8
+const SCHEDULE_TOLERANCE_MIN = 10
 
 /**
  * 找到当前北京时间对应的"调度槽"。如果不在任何容错窗口内，返回 null。
