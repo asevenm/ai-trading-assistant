@@ -36,6 +36,8 @@ import {
   ALERT_TYPE_COLORS,
   type AlertType,
 } from "@/lib/alert-scanner"
+import { STAGE_LABELS, STAGE_EMOJI, STAGE_COLORS } from "@/lib/rotation/stage-lookup"
+import type { RotationStage } from "@/lib/rotation/types"
 import { isHKCode } from "@/lib/stock-api"
 import { isSectorCode } from "@/lib/sector-api"
 import type { Alert, AlertRule } from "@prisma/client"
@@ -51,6 +53,30 @@ function isHKAlert(alert: Alert): boolean {
   return isHKCode(alert.stockCode) || alert.message.includes("[港股]")
 }
 
+function parseAlertStage(detail: string | null): RotationStage | null {
+  if (!detail) return null
+  try {
+    const parsed = JSON.parse(detail) as { themeStage?: string }
+    const stage = parsed.themeStage
+    if (stage === "STARTING" || stage === "RISING" || stage === "DIVERGING" || stage === "FADING") {
+      return stage
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function parseAlertThemeName(detail: string | null): string | null {
+  if (!detail) return null
+  try {
+    const parsed = JSON.parse(detail) as { themeBoardName?: string }
+    return parsed.themeBoardName ?? null
+  } catch {
+    return null
+  }
+}
+
 interface AlertsContentProps {
   market: MarketFilter
   title: string
@@ -62,11 +88,23 @@ export function AlertsContent({ market, title }: AlertsContentProps) {
     useAlertStore()
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<"alerts" | "rules">("alerts")
+  const [stageFilter, setStageFilter] = useState<RotationStage | "ALL" | "HOT">("ALL")
 
   // 按市场过滤
-  const alerts = allAlerts.filter((a) =>
+  const alertsByMarket = allAlerts.filter((a) =>
     market === "HK" ? isHKAlert(a) : !isHKAlert(a)
   )
+  // 按题材阶段过滤
+  const alerts =
+    stageFilter === "ALL"
+      ? alertsByMarket
+      : alertsByMarket.filter((a) => {
+          const stage = parseAlertStage(a.detail)
+          if (stageFilter === "HOT") {
+            return stage === "RISING" || stage === "STARTING"
+          }
+          return stage === stageFilter
+        })
   const filteredUnreadCount = alerts.filter((a) => !a.read).length
 
   const fetchAlerts = useCallback(async () => {
@@ -247,6 +285,40 @@ export function AlertsContent({ market, title }: AlertsContentProps) {
       ellipsis: true,
     },
     {
+      title: "题材阶段",
+      key: "themeStage",
+      width: 110,
+      filters: [
+        { text: "🔥 主升", value: "RISING" },
+        { text: "🟢 启动", value: "STARTING" },
+        { text: "⚠️ 分歧", value: "DIVERGING" },
+        { text: "🔻 退潮", value: "FADING" },
+        { text: "无数据", value: "NONE" },
+      ],
+      onFilter: (value, record) => {
+        const stage = parseAlertStage(record.detail)
+        if (value === "NONE") return stage === null
+        return stage === value
+      },
+      render: (_: unknown, record) => {
+        const stage = parseAlertStage(record.detail)
+        const theme = parseAlertThemeName(record.detail)
+        if (!stage) return <span className="text-muted-foreground text-xs">-</span>
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Tag color={STAGE_COLORS[stage]}>
+              {STAGE_EMOJI[stage]} {STAGE_LABELS[stage]}
+            </Tag>
+            {theme && (
+              <span className="text-[10px] text-muted-foreground truncate" title={theme}>
+                {theme}
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       title: "触发值",
       dataIndex: "currentValue",
       width: 100,
@@ -425,7 +497,47 @@ export function AlertsContent({ market, title }: AlertsContentProps) {
             size="small"
             title="异动记录"
             extra={
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center flex-wrap">
+                <span className="text-xs text-muted-foreground">题材阶段：</span>
+                <Space.Compact size="small">
+                  <Button
+                    type={stageFilter === "ALL" ? "primary" : "default"}
+                    onClick={() => setStageFilter("ALL")}
+                  >
+                    全部
+                  </Button>
+                  <Button
+                    type={stageFilter === "HOT" ? "primary" : "default"}
+                    onClick={() => setStageFilter("HOT")}
+                    title="只看主升 + 启动"
+                  >
+                    🔥 风口
+                  </Button>
+                  <Button
+                    type={stageFilter === "RISING" ? "primary" : "default"}
+                    onClick={() => setStageFilter("RISING")}
+                  >
+                    🔥 主升
+                  </Button>
+                  <Button
+                    type={stageFilter === "STARTING" ? "primary" : "default"}
+                    onClick={() => setStageFilter("STARTING")}
+                  >
+                    🟢 启动
+                  </Button>
+                  <Button
+                    type={stageFilter === "DIVERGING" ? "primary" : "default"}
+                    onClick={() => setStageFilter("DIVERGING")}
+                  >
+                    ⚠️ 分歧
+                  </Button>
+                  <Button
+                    type={stageFilter === "FADING" ? "primary" : "default"}
+                    onClick={() => setStageFilter("FADING")}
+                  >
+                    🔻 退潮
+                  </Button>
+                </Space.Compact>
                 {filteredUnreadCount > 0 && (
                   <Button
                     size="small"

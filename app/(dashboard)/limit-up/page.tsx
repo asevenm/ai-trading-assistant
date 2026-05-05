@@ -5,8 +5,10 @@ import { Card, Button, Spin, Table, Tag, Statistic, Row, Col, App } from "antd"
 import { ReloadOutlined, RiseOutlined, FallOutlined, ThunderboltOutlined, TeamOutlined } from "@ant-design/icons"
 import type { ColumnsType } from "antd/es/table"
 import type { LimitUpStock } from "@/lib/limit-up-api"
+import type { LimitUpPoolStock } from "@/lib/theme-radar-api"
 import { CousinModal } from "@/components/limit-up/CousinModal"
 import { PromotionRanking } from "@/components/limit-up/PromotionRanking"
+import { LadderPyramid } from "@/components/limit-up/LadderPyramid"
 import Link from "next/link"
 
 const { useApp } = App
@@ -22,6 +24,7 @@ interface LimitUpData {
     total: number
     stocks: { code: string; name: string; price: number; changePercent: number; turnoverRate: number }[]
   }
+  pool: LimitUpPoolStock[]
 }
 
 export default function LimitUpPage() {
@@ -248,6 +251,12 @@ export default function LimitUpPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* 连板梯队金字塔 */}
+      <LadderPyramid
+        pool={data?.pool ?? []}
+        onFindCousins={(s) => setCousinSource(s)}
+      />
 
       {/* 涨停行业分布 */}
       {data && data.limitUp.stocks.length > 0 && (

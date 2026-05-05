@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getLimitUpSummary, getLimitDownStocks } from "@/lib/limit-up-api"
+import { getLimitUpPool } from "@/lib/theme-radar-api"
 
 export async function GET() {
   const session = await auth()
@@ -8,9 +9,10 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const [summary, limitDown] = await Promise.all([
+  const [summary, limitDown, pool] = await Promise.all([
     getLimitUpSummary(),
     getLimitDownStocks(),
+    getLimitUpPool().catch(() => []),
   ])
 
   return NextResponse.json({
@@ -19,5 +21,6 @@ export async function GET() {
       total: limitDown.length,
       stocks: limitDown,
     },
+    pool,
   })
 }

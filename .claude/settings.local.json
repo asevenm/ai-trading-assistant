@@ -22,7 +22,17 @@
       "Bash(chmod +x /Users/aseven/my_project/ai-trading-assistant/scripts/rotation-cron.sh)",
       "Bash(pnpm prisma *)",
       "Bash(docker --version)",
-      "Bash(pnpm dlx *)"
+      "Bash(pnpm dlx *)",
+      "Bash(pnpm build *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(DATABASE_URL='postgresql://neondb_owner:npg_G81baMpCUtgF@ep-lucky-bread-ao42kvlh-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require' pnpm prisma migrate deploy)",
+      "Bash(docker exec *)",
+      "Bash(openssl rand *)",
+      "Bash(git push *)",
+      "Bash(git check-ignore *)",
+      "Bash(chmod +x ~/.claude/scripts/robbyrussell-statusline.sh)",
+      "Bash(~/.claude/scripts/robbyrussell-statusline.sh)"
     ],
     "deny": [],
     "ask": []

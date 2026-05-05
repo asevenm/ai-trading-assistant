@@ -1,3 +1,4 @@
+import { buildStageLookup, type ThemeStageInfo } from "./rotation/stage-lookup"
 import { normalizeDiff } from "./market-api"
 import { getSecId, isHKCode } from "./stock-api"
 import {
@@ -41,6 +42,7 @@ export interface ScanResult {
   currentValue: number
   threshold: number
   ruleId: string
+  themeStage?: ThemeStageInfo
 }
 
 export interface StockSnapshot {
@@ -56,6 +58,7 @@ export interface StockSnapshot {
   low: number
   open: number
   prevClose: number
+  industry?: string
 }
 
 // ==================== Default Rules ====================
@@ -99,7 +102,7 @@ async function fetchBatchQuotes(
 
   const secids = codes.map((c) => getSecId(c)).join(",")
 
-  const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f4,f5,f6,f7,f8,f10,f12,f14,f15,f16,f17,f18&secids=${secids}&ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2`
+  const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fields=f2,f3,f4,f5,f6,f7,f8,f10,f12,f14,f15,f16,f17,f18,f100&secids=${secids}&ut=fa5fd1943c7b386f172d6893dbfba10b&fltt=2`
 
   const response = await fetch(url, {
     headers: EAST_MONEY_HEADERS,
@@ -122,6 +125,7 @@ async function fetchBatchQuotes(
     low: Number(item.f16),
     open: Number(item.f17),
     prevClose: Number(item.f18),
+    industry: item.f100 ? String(item.f100) : undefined,
   }))
 }
 
@@ -138,7 +142,7 @@ async function fetchMarketMovers(
     ? `f3>=${absThreshold}`
     : `f3<=-${absThreshold}`
 
-  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=${count}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f2,f3,f5,f6,f8,f10,f12,f14,f15,f16,f17,f18&fid=f3&po=${po}&fltt=2&fl=${filter}&ut=fa5fd1943c7b386f172d6893dbfba10b`
+  const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=${count}&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f2,f3,f5,f6,f8,f10,f12,f14,f15,f16,f17,f18,f100&fid=f3&po=${po}&fltt=2&fl=${filter}&ut=fa5fd1943c7b386f172d6893dbfba10b`
 
   const response = await fetch(url, {
     headers: EAST_MONEY_HEADERS,
@@ -161,6 +165,7 @@ async function fetchMarketMovers(
     low: Number(item.f16),
     open: Number(item.f17),
     prevClose: Number(item.f18),
+    industry: item.f100 ? String(item.f100) : undefined,
   }))
 }
 
@@ -295,7 +300,58 @@ export async function scanAlerts(
     results.push(...alerts)
   }
 
+  // 给所有结果挂上"题材当前阶段"上下文
+  await enrichWithThemeStage(results)
+
   return results
+}
+
+/**
+ * 给扫描结果注入 themeStage：
+ *  - sector_move：stockCode 即板块 code，按 boardId 直接命中
+ *  - 个股异动：尝试匹配该股所属概念/行业到 BoardSnapshot
+ *
+ * 失败（找不到对应板块快照）静默跳过——不阻塞 alert 主流程。
+ */
+async function enrichWithThemeStage(results: ScanResult[]): Promise<void> {
+  if (results.length === 0) return
+  try {
+    const lookup = await buildStageLookup()
+    if (lookup.byBoardId.size === 0) return
+
+    for (const r of results) {
+      if (r.themeStage) continue
+
+      // 1) 板块异动直接用 stockCode（board id）
+      if (r.type === "sector_move") {
+        const hit = lookup.lookup({ boardId: r.stockCode })
+        if (hit) {
+          r.themeStage = hit
+          r.detail = { ...r.detail, themeStage: hit.stage, themeBoardName: hit.boardName }
+        }
+        continue
+      }
+
+      // 2) 个股异动：按 detail.industry / detail.concepts 名匹配
+      const industry = (r.detail?.industry as string | undefined) || ""
+      const concepts = (r.detail?.concepts as string[] | undefined) || []
+      const candidates = [industry, ...concepts].filter(Boolean)
+
+      let best: ThemeStageInfo | null = null
+      for (const name of candidates) {
+        const hit = lookup.lookup({ boardName: name })
+        if (hit && (!best || hit.strengthScore > best.strengthScore)) {
+          best = hit
+        }
+      }
+      if (best) {
+        r.themeStage = best
+        r.detail = { ...r.detail, themeStage: best.stage, themeBoardName: best.boardName }
+      }
+    }
+  } catch (err) {
+    console.error("enrichWithThemeStage failed:", err)
+  }
 }
 
 function checkRule(
@@ -353,6 +409,7 @@ function checkPriceSurge(
         changePercent: quote.changePercent,
         volume: quote.volume,
         amount: quote.amount,
+        industry: quote.industry,
       },
       currentValue: quote.changePercent,
       threshold: rule.threshold,
@@ -378,6 +435,7 @@ function checkPriceDrop(
         changePercent: quote.changePercent,
         volume: quote.volume,
         amount: quote.amount,
+        industry: quote.industry,
       },
       currentValue: quote.changePercent,
       threshold: rule.threshold,
@@ -405,6 +463,7 @@ function checkVolumeSurge(
         turnoverRate: quote.turnoverRate,
         volume: quote.volume,
         amount: quote.amount,
+        industry: quote.industry,
       },
       currentValue: quote.volumeRatio,
       threshold: rule.threshold,
@@ -439,6 +498,7 @@ function checkNearLimitUp(
         distanceToLimit: distToLimit,
         limitPercent: limit,
         turnoverRate: quote.turnoverRate,
+        industry: quote.industry,
       },
       currentValue: quote.changePercent,
       threshold: rule.threshold,
@@ -467,6 +527,7 @@ function checkRapidRise(
         riseFromOpen,
         changePercent: quote.changePercent,
         turnoverRate: quote.turnoverRate,
+        industry: quote.industry,
       },
       currentValue: riseFromOpen,
       threshold: rule.threshold,
@@ -495,6 +556,7 @@ function checkRapidDrop(
         dropFromOpen,
         changePercent: quote.changePercent,
         turnoverRate: quote.turnoverRate,
+        industry: quote.industry,
       },
       currentValue: dropFromOpen,
       threshold: rule.threshold,
@@ -541,6 +603,7 @@ async function checkMarketRapidMovers(
       changePercent: stock.changePercent,
       turnoverRate: stock.turnoverRate,
       market: marketTag,
+      industry: stock.industry,
     },
     currentValue: stock.changePercent,
     threshold: rule.threshold,

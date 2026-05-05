@@ -55,6 +55,7 @@ const menuItems = [
     icon: <RiseOutlined />,
     label: "涨停生态",
     children: [
+      { key: "/live-trading", icon: <ThunderboltOutlined />, label: "盘中作战" },
       { key: "/limit-up", icon: <RiseOutlined />, label: "涨停分析" },
       { key: "/pre-limit-up", icon: <RocketOutlined />, label: "预涨停雷达" },
       { key: "/seal-order", icon: <SafetyCertificateOutlined />, label: "封单&打板" },
@@ -117,6 +118,7 @@ const PATH_TO_GROUP: Record<string, string> = {
   "/morning-brief": "group-pre-market",
   "/auction": "group-pre-market",
   "/limit-up": "group-limit-up",
+  "/live-trading": "group-limit-up",
   "/pre-limit-up": "group-limit-up",
   "/seal-order": "group-limit-up",
   "/cousins-radar": "group-discovery",
